@@ -7,6 +7,13 @@
 <p align="left">
   <a href="https://www.python.org/"><img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-blue"></a>
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
+  <a href="">
+    <img src="https://img.shields.io/badge/-TensorBoard-%23FF6F00?style=for-the-badge&logo=tensorflow&logoColor=white&labelColor=%23FF6F00&color=white">
+  </a>
+  <a href="https://xrpscan.com/"><img src="https://img.shields.io/badge/-XRP-darkgrey?style=for-the-badge&logo=xrp&logoColor=darkgrey&labelColor=grey
+  "></a>
+
+  
 </p>
 
 **Clairvoyant** is a sophisticated cryptocurrency price forecaster that synthesizes market data, news sentiment, and dynamic on-chain metrics using a powerful stacking ensemble model.
