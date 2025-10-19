@@ -9,7 +9,7 @@
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" /></a>
   <a href=""><img src="https://img.shields.io/badge/-TensorBoard-%23FF6F00?style=flat-square&logo=tensorflow&logoColor=white&labelColor=%23FF6F00&color=white" /></a>
   <a href="https://xrpscan.com/"><img src="https://img.shields.io/badge/-XRPScan-darkgrey?style=flat-square&logo=xrp&logoColor=darkgrey&labelColor=grey" /></a>
-  <a><img src="https://img.shields.io/badge/ML-BiGRU-magenta?style=flat-square&labelColor=grey" /></a>
+  <a><img src="https://img.shields.io/badge/ML-BiGRU-grey?style=flat-square&labelColor=magenta" /></a>
 
   
 </p>
