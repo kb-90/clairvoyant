@@ -1,10 +1,10 @@
-# Clairvoyant v3.1 - Optimized Crypto Forecaster
+# CLAIRVOYANT v3.1 - XRP PRICE PREDICTOR
 
-<p align="center">
+<p>
   <img src="/assets/clairvoyant-banner.jpg?text=Clairvoyant+Project+Banner" alt="Clairvoyant Banner">
 </p>
 
-<p align="center">
+<p align="left">
   <a href="https://www.python.org/"><img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-blue"></a>
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
 </p>
