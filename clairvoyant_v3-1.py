@@ -1249,6 +1249,7 @@ def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_len
         
         for i, name in enumerate(model_names, 1):
             if name in ['gru', 'lstm', 'cnn_lstm']:
+                epochs = TRAINING_CONFIG["CV_EPOCHS_DL"]
                 if TRAINING_CONFIG['OPTIMIZE_HYPERPARAMETERS']:
                     def objective(trial):
                         hyperparams = {
@@ -1263,7 +1264,7 @@ def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_len
                         model = KerasRegressorWrapper(
                             create_cnn_lstm_model if name == 'cnn_lstm' else create_dl_model, 
                             model_type=name, 
-                            epochs=TRAINING_CONFIG["CV_EPOCHS_DL"], 
+                            epochs=epochs, 
                             **hyperparams
                         ).fit(X_train_seq, y_train_seq_cv, validation_data=(X_test_seq, y_test_seq), target_scaler=target_scaler, run_log_dir=run_log_dir)
                         
@@ -1274,7 +1275,6 @@ def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_len
                     study.optimize(objective, n_trials=TRAINING_CONFIG['OPTUNA_TRIALS'])
                     hyperparams = study.best_params
                 else:
-                    epochs = TRAINING_CONFIG["CV_EPOCHS_DL"]
                     hyperparams = get_default_hyperparameters(name)
                 
                 if name == 'gru':
