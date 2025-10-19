@@ -1,0 +1,6 @@
+/.assistants
+/.ignore
+/.venv
+/.vscode
+/clairvoyant.code-workspace
+/__pycache__
