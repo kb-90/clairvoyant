@@ -398,23 +398,25 @@ class XRPOnChainAnalyzer:
         TerminalStyle.success(f"Detected {total_count:.0f} whale txs totaling {total_xrp:,.2f} XRP in the last 6 hours.")
         return df
 
-async def integrate_onchain_metrics(df: pd.DataFrame, ticker_symbol: str = 'XRP') -> pd.DataFrame:
+async def integrate_onchain_metrics(df: pd.DataFrame, ticker_symbol: str = 'XRP') -> tuple:
     """
     Fetches and integrates on-chain data from a dynamic list of top XRP accounts.
     """
     if ticker_symbol != 'XRP':
         TerminalStyle.warning(f"On-chain analysis currently only supports XRP, skipping for {ticker_symbol}")
-        return df
+        return df, pd.DataFrame()
     
     TerminalStyle.subheader("Phase 1b: On-Chain Metrics Analysis (Dynamic)")
-    
+    whale_df = pd.DataFrame()
     try:
         async with aiohttp.ClientSession() as session:
             top_accounts = await fetch_top_xrp_accounts(session, limit=50)
             
             if not top_accounts:
                 TerminalStyle.error("Could not fetch top accounts. Skipping on-chain analysis.")
-                return df
+                df['whale_volume_xrp'] = 0.0
+                df['whale_tx_count'] = 0.0
+                return df, whale_df
 
             analyzer = XRPOnChainAnalyzer()
             whale_df = await analyzer.fetch_whale_transactions(session, top_accounts=top_accounts)
@@ -439,7 +441,7 @@ async def integrate_onchain_metrics(df: pd.DataFrame, ticker_symbol: str = 'XRP'
         df['whale_volume_xrp'] = 0.0
         df['whale_tx_count'] = 0.0
     
-    return df
+    return df, whale_df
 
 # --- 2. ENHANCED SENTIMENT ANALYSIS ENGINE ---
 
@@ -937,30 +939,299 @@ class StopIfNaN(Callback):
             self.model.stop_training = True
             logger.warning("NaN loss detected. Stopping training.")
 
-class EpochMetricsLogger(Callback):
-    """Logs additional metrics at the end of each epoch."""
-    def __init__(self, file_writer, target_scaler):
-        super().__init__()
-        self.file_writer = file_writer
-        self.target_scaler = target_scaler
-        self.validation_data = None
 
-    def on_epoch_end(self, epoch, logs=None):
-        if logs is None:
-            logs = {}
-        if self.validation_data is not None:
-            y_true = self.target_scaler.inverse_transform(self.validation_data[1].reshape(-1, 1)).flatten()
-            y_pred_scaled = self.model.predict(self.validation_data[0]).flatten()
-            y_pred = self.target_scaler.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
 
-            rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-            mae = mean_absolute_error(y_true, y_pred)
-            direction_acc = np.mean(np.sign(y_true[1:] - y_true[:-1]) == np.sign(y_pred[1:] - y_pred[:-1])) * 100
+import tensorflow as tf
+from pathlib import Path
+import numpy as np
+import pandas as pd
+from typing import Dict, Optional
+import matplotlib.pyplot as plt
+import io
 
-            with self.file_writer.as_default():
-                tf.summary.scalar('epoch_rmse', rmse, step=epoch)
-                tf.summary.scalar('epoch_mae', mae, step=epoch)
-                tf.summary.scalar('epoch_directional_accuracy', direction_acc, step=epoch)
+class TradingTensorBoard:
+    """
+    Simplified TensorBoard logger focused on trader-relevant metrics.
+    Organized into clear dashboards: Market, Training, Predictions, Performance
+    """
+    def __init__(self, log_dir: Path, horizon: int):
+        self.log_dir = Path(log_dir)
+        self.horizon = horizon
+        
+        # Create separate writers for different dashboards
+        self.writers = {
+            'market': tf.summary.create_file_writer(str(self.log_dir / 'market_data')),
+            'training': tf.summary.create_file_writer(str(self.log_dir / 'training_metrics')),
+            'predictions': tf.summary.create_file_writer(str(self.log_dir / 'prediction_quality')),
+            'performance': tf.summary.create_file_writer(str(self.log_dir / 'model_performance'))
+        }
+        
+        self.step = 0
+    
+    def log_market_context(self, df: pd.DataFrame):
+        """Log current market conditions - what traders need to see"""
+        with self.writers['market'].as_default():
+            # Use last 100 points for context
+            recent_df = df.tail(100).reset_index()
+            
+            for _, row in recent_df.iterrows():
+                step = int(row['timestamp'].timestamp())
+                
+                # Price action
+                tf.summary.scalar('Price/Current_USDT', row['close'], step=step)
+                
+                # Volatility indicators
+                if 'atr' in row:
+                    tf.summary.scalar('Volatility/ATR', row['atr'], step=step)
+                if 'bb_width' in row:
+                    tf.summary.scalar('Volatility/Bollinger_Width', row['bb_width'], step=step)
+                
+                # Momentum
+                if 'rsi' in row:
+                    tf.summary.scalar('Momentum/RSI', row['rsi'], step=step)
+                if 'macd' in row:
+                    tf.summary.scalar('Momentum/MACD', row['macd'], step=step)
+                
+                # Sentiment
+                if 'sentiment' in row:
+                    tf.summary.scalar('Sentiment/News_Score', row['sentiment'], step=step)
+                
+                # On-chain (if available)
+                if 'whale_volume_xrp' in row and row['whale_volume_xrp'] > 0:
+                    tf.summary.scalar('OnChain/Whale_Volume_XRP', row['whale_volume_xrp'], step=step)
+                if 'whale_tx_count' in row and row['whale_tx_count'] > 0:
+                    tf.summary.scalar('OnChain/Whale_Transactions', row['whale_tx_count'], step=step)
+            
+            # Market regime distribution
+            if 'market_regime' in df.columns:
+                regime_counts = df['market_regime'].value_counts()
+                for regime, count in regime_counts.items():
+                    tf.summary.scalar(f'Market_Regime/Regime_{regime}_Frequency', 
+                                    count / len(df) * 100, step=0)
+        
+        self.writers['market'].flush()
+    
+    def log_whale_activity(self, whale_df: pd.DataFrame):
+        """Log on-chain whale activity in real-time"""
+        if whale_df.empty:
+            return
+            
+        with self.writers['market'].as_default():
+            # Aggregate metrics
+            total_volume = whale_df['whale_amount'].sum()
+            total_txs = whale_df['whale_count'].sum()
+            avg_tx_size = total_volume / total_txs if total_txs > 0 else 0
+            
+            tf.summary.scalar('OnChain_Summary/Total_Whale_Volume_6h', total_volume, step=0)
+            tf.summary.scalar('OnChain_Summary/Total_Whale_Transactions_6h', total_txs, step=0)
+            tf.summary.scalar('OnChain_Summary/Average_Transaction_Size', avg_tx_size, step=0)
+            
+            # Time series of whale activity
+            for _, row in whale_df.iterrows():
+                step = int(row['timestamp'].timestamp())
+                tf.summary.scalar('OnChain_TimeSeries/Whale_Volume', 
+                                row['whale_amount'], step=step)
+                tf.summary.scalar('OnChain_TimeSeries/Transaction_Count', 
+                                row['whale_count'], step=step)
+        
+        self.writers['market'].flush()
+    
+    def log_training_epoch(self, epoch: int, metrics: Dict[str, float], 
+                          model_name: str, is_validation: bool = False):
+        """Log training metrics per epoch"""
+        prefix = 'Validation' if is_validation else 'Training'
+        
+        with self.writers['training'].as_default():
+            # Core training metrics
+            if 'loss' in metrics:
+                tf.summary.scalar(f'{model_name}/{prefix}_Loss', 
+                                metrics['loss'], step=epoch)
+            if 'mae' in metrics:
+                tf.summary.scalar(f'{model_name}/{prefix}_MAE', 
+                                metrics['mae'], step=epoch)
+            
+            # Learning dynamics
+            if 'lr' in metrics:
+                tf.summary.scalar(f'{model_name}/Learning_Rate', 
+                                metrics['lr'], step=epoch)
+        
+        self.writers['training'].flush()
+    
+    def log_cv_fold_results(self, fold: int, metrics: Dict[str, float]):
+        """Log cross-validation results"""
+        with self.writers['performance'].as_default():
+            tf.summary.scalar(f'CrossValidation_{self.horizon}h/RMSE_Fold_{fold}', 
+                            metrics['rmse'], step=fold)
+            tf.summary.scalar(f'CrossValidation_{self.horizon}h/MAE_Fold_{fold}', 
+                            metrics['mae'], step=fold)
+            
+            if 'directional_accuracy' in metrics:
+                tf.summary.scalar(f'CrossValidation_{self.horizon}h/Direction_Accuracy_Fold_{fold}', 
+                                metrics['directional_accuracy'], step=fold)
+        
+        self.writers['performance'].flush()
+    
+    def log_final_cv_summary(self, avg_metrics: Dict[str, float]):
+        """Log aggregated CV results"""
+        with self.writers['performance'].as_default():
+            tf.summary.scalar(f'CrossValidation_{self.horizon}h/Average_RMSE', 
+                            avg_metrics['rmse'], step=0)
+            tf.summary.scalar(f'CrossValidation_{self.horizon}h/Average_MAE', 
+                            avg_metrics['mae'], step=0)
+            
+            if 'directional_accuracy' in avg_metrics:
+                tf.summary.scalar(f'CrossValidation_{self.horizon}h/Average_Direction_Accuracy', 
+                                avg_metrics['directional_accuracy'], step=0)
+        
+        self.writers['performance'].flush()
+    
+    def log_prediction_quality(self, y_true: np.ndarray, y_pred: np.ndarray, 
+                               fold: Optional[int] = None):
+        """Log prediction quality metrics that traders care about"""
+        # Calculate trader-relevant metrics
+        rmse = np.sqrt(np.mean((y_true - y_pred) ** 2))
+        mae = np.mean(np.abs(y_true - y_pred))
+        mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+        
+        # Directional accuracy (most important for traders)
+        if len(y_true) > 1:
+            true_direction = np.sign(np.diff(y_true))
+            pred_direction = np.sign(np.diff(y_pred))
+            directional_accuracy = np.mean(true_direction == pred_direction) * 100
+        else:
+            directional_accuracy = 0
+        
+        # Price level accuracy
+        price_error_pct = np.abs((y_true - y_pred) / y_true) * 100
+        
+        step = fold if fold is not None else 0
+        suffix = f'_Fold_{fold}' if fold is not None else '_Final'
+        
+        with self.writers['predictions'].as_default():
+            tf.summary.scalar(f'Accuracy_{self.horizon}h/RMSE{suffix}', rmse, step=step)
+            tf.summary.scalar(f'Accuracy_{self.horizon}h/MAE{suffix}', mae, step=step)
+            tf.summary.scalar(f'Accuracy_{self.horizon}h/MAPE{suffix}', mape, step=step)
+            tf.summary.scalar(f'Accuracy_{self.horizon}h/Directional{suffix}', 
+                            directional_accuracy, step=step)
+            tf.summary.scalar(f'Accuracy_{self.horizon}h/Avg_Price_Error_Pct{suffix}', 
+                            np.mean(price_error_pct), step=step)
+        
+        self.writers['predictions'].flush()
+        
+        return {
+            'rmse': rmse,
+            'mae': mae,
+            'mape': mape,
+            'directional_accuracy': directional_accuracy
+        }
+    
+    def log_prediction_distribution(self, y_true: np.ndarray, y_pred: np.ndarray):
+        """Visualize prediction vs actual distribution"""
+        fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+        
+        # Scatter plot
+        axes[0].scatter(y_true, y_pred, alpha=0.5, s=10)
+        axes[0].plot([y_true.min(), y_true.max()], 
+                     [y_true.min(), y_true.max()], 'r--', lw=2)
+        axes[0].set_xlabel('Actual Price')
+        axes[0].set_ylabel('Predicted Price')
+        axes[0].set_title(f'{self.horizon}h Prediction Accuracy')
+        axes[0].grid(True, alpha=0.3)
+        
+        # Error distribution
+        errors = ((y_pred - y_true) / y_true) * 100
+        axes[1].hist(errors, bins=50, alpha=0.7, edgecolor='black')
+        axes[1].axvline(0, color='r', linestyle='--', lw=2)
+        axes[1].set_xlabel('Prediction Error (%)')
+        axes[1].set_ylabel('Frequency')
+        axes[1].set_title('Error Distribution')
+        axes[1].grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        # Convert to tensor
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150)
+        buf.seek(0)
+        image = tf.image.decode_png(buf.getvalue(), channels=4)
+        image = tf.expand_dims(image, 0)
+        plt.close()
+        
+        with self.writers['predictions'].as_default():
+            tf.summary.image(f'Prediction_Analysis_{self.horizon}h', image, step=0)
+        
+        self.writers['predictions'].flush()
+    
+    def log_backtest_chart(self, timestamps: pd.DatetimeIndex, 
+                          y_true: np.ndarray, y_pred: np.ndarray):
+        """Log backtest visualization"""
+        fig, ax = plt.subplots(figsize=(15, 6))
+        
+        ax.plot(timestamps, y_true, label='Actual Price', 
+                color='#00FF00', linewidth=2, alpha=0.8)
+        ax.plot(timestamps, y_pred, label='Predicted Price', 
+                color='#FF00FF', linewidth=2, linestyle='--', alpha=0.8)
+        
+        # Highlight prediction errors
+        error_pct = np.abs((y_true - y_pred) / y_true) * 100
+        colors = ['green' if e < 2 else 'yellow' if e < 5 else 'red' 
+                  for e in error_pct]
+        ax.scatter(timestamps, y_pred, c=colors, s=20, alpha=0.6, 
+                  label='Error: Green<2%, Yellow<5%, Red>5%')
+        
+        ax.set_title(f'{self.horizon}h Backtest Performance', fontsize=14)
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Price (USDT)')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        
+        # Convert to tensor
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150)
+        buf.seek(0)
+        image = tf.image.decode_png(buf.getvalue(), channels=4)
+        image = tf.expand_dims(image, 0)
+        plt.close()
+        
+        with self.writers['predictions'].as_default():
+            tf.summary.image(f'Backtest_{self.horizon}h', image, step=0)
+        
+        self.writers['predictions'].flush()
+    
+    def log_feature_importance(self, feature_names: list, importances: np.ndarray):
+        """Log feature importance for interpretability"""
+        # Sort features by importance
+        indices = np.argsort(importances)[-20:]  # Top 20
+        top_features = [feature_names[i] for i in indices]
+        top_importances = importances[indices]
+        
+        fig, ax = plt.subplots(figsize=(10, 8))
+        ax.barh(range(len(top_features)), top_importances)
+        ax.set_yticks(range(len(top_features)))
+        ax.set_yticklabels(top_features)
+        ax.set_xlabel('Importance')
+        ax.set_title(f'Top 20 Features for {self.horizon}h Prediction')
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        
+        # Convert to tensor
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150)
+        buf.seek(0)
+        image = tf.image.decode_png(buf.getvalue(), channels=4)
+        image = tf.expand_dims(image, 0)
+        plt.close()
+        
+        with self.writers['training'].as_default():
+            tf.summary.image(f'Feature_Importance_{self.horizon}h', image, step=0)
+        
+        self.writers['training'].flush()
+    
+    def close(self):
+        """Close all writers"""
+        for writer in self.writers.values():
+            writer.close()
 
 class KerasRegressorWrapper:
     """
@@ -1019,11 +1290,7 @@ class KerasRegressorWrapper:
                 verbose=0
             )
             callbacks.extend([early_stopping, reduce_lr])
-            
-            if file_writer and target_scaler:
-                metrics_logger = EpochMetricsLogger(file_writer, target_scaler)
-                metrics_logger.validation_data = validation_data
-                callbacks.append(metrics_logger)
+
         else:
             reduce_lr = ReduceLROnPlateau(
                 monitor='loss',
@@ -1033,17 +1300,6 @@ class KerasRegressorWrapper:
                 verbose=0
             )
             callbacks.append(reduce_lr)
-        
-        if run_log_dir:
-            tensorboard = TensorBoard(
-                log_dir=str(self.log_dir),
-                histogram_freq=0,
-                write_graph=True,
-                write_images=False,
-                update_freq='epoch',
-                profile_batch=0
-            )
-            callbacks.append(tensorboard)
 
         history = self.model.fit(
             X, y,
@@ -1150,24 +1406,7 @@ def create_sequences_optimized(data, seq_len):
     # Return a copy to avoid stride issues with subsequent operations
     return sequences.copy()
 
-def log_contextual_data_to_tensorboard(df: pd.DataFrame, log_dir: Path):
-    """Logs price, sentiment, and on-chain data to TensorBoard for analysis."""
-    TerminalStyle.info("Logging contextual data to TensorBoard...")
-    writer = tf.summary.create_file_writer(str(log_dir / 'market_context'))
-    
-    # Log the last 1000 data points for relevance and speed
-    df_to_log = df.tail(1000)
-    
-    with writer.as_default():
-        for timestamp, row in df_to_log.iterrows():
-            step = int(timestamp.timestamp()) # Use unix timestamp as the step
-            tf.summary.scalar("Market/Price_USDT", row['close'], step=step)
-            if 'sentiment' in row:
-                tf.summary.scalar("Market/News_Sentiment", row['sentiment'], step=step)
-            if 'whale_volume_xrp' in row:
-                tf.summary.scalar("On-Chain/Whale_Volume_XRP", row['whale_volume_xrp'], step=step)
-    writer.close()
-    TerminalStyle.success("Contextual data logged.")
+
 
 # --- 6. ENHANCED TRAINING & EVALUATION ---
 def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_length: int = TRAINING_CONFIG["SEQUENCE_LENGTH"], ticker: str = TRAINING_CONFIG["TICKER"], timeframe: str = TRAINING_CONFIG["TIMEFRAME"]) -> None:
@@ -1176,6 +1415,8 @@ def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_len
     """
     TerminalStyle.header(f"TRAINING PIPELINE: {horizon}H PREDICTION HORIZON")
     
+    tb_logger = TradingTensorBoard(run_log_dir, horizon)
+
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     Path('sentiment').mkdir(parents=True, exist_ok=True)
     
@@ -1183,21 +1424,23 @@ def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_len
     data = load_data(ticker, timeframe, limit=TRAINING_CONFIG["DATA_LIMIT"])
     data = fetch_and_add_sentiment(data, ticker.split('/')[0])
     
+    whale_df = pd.DataFrame()
     try:
-        data = asyncio.run(integrate_onchain_metrics(data, ticker.split('/')[0]))
+        data, whale_df = asyncio.run(integrate_onchain_metrics(data, ticker.split('/')[0]))
     except RuntimeError as e:
         if 'already running' in str(e):
             loop = asyncio.get_event_loop()
-            data = loop.run_until_complete(integrate_onchain_metrics(data, ticker.split('/')[0]))
+            data, whale_df = loop.run_until_complete(integrate_onchain_metrics(data, ticker.split('/')[0]))
         else:
             raise
-    
-    # --- Log contextual data for analysis ---
-    log_contextual_data_to_tensorboard(data, run_log_dir)
 
     TerminalStyle.subheader("Phase 2: Feature Engineering")
     featured_data = feature_engineering(data)
     
+    tb_logger.log_market_context(featured_data)
+    if not whale_df.empty:
+        tb_logger.log_whale_activity(whale_df)
+
     log_dir = run_log_dir / f'evaluation_{horizon}h'
     featured_data = detect_market_regime(featured_data, str(log_dir))
     
@@ -1224,21 +1467,18 @@ def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_len
         feature_scaler = RobustScaler()
         target_scaler = MinMaxScaler()
         
-        # OPTIMIZED: Use fit_transform views
         X_train_scaled = feature_scaler.fit_transform(X_train)
         y_train_scaled = target_scaler.fit_transform(y_train)
         X_test_scaled = feature_scaler.transform(X_test)
 
         feature_columns = X_train.columns.tolist()
 
-        # OPTIMIZED: Use optimized sequence creation
         X_train_seq = create_sequences_optimized(X_train_scaled, sequence_length)
         y_train_seq_cv = y_train_scaled[sequence_length:]
         X_test_seq = create_sequences_optimized(X_test_scaled, sequence_length)
         y_test_seq = y_test.values[sequence_length:]
         y_test_actual = y_test.values[sequence_length:]
         
-        # OPTIMIZED: Direct array slicing instead of creating DataFrame copies
         X_train_tab = X_train_scaled[sequence_length:]
         X_test_tab = X_test_scaled[sequence_length:]
         X_train_tab_df = pd.DataFrame(X_train_tab, columns=feature_columns)
@@ -1312,9 +1552,9 @@ def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_len
         final_predictions = target_scaler.inverse_transform(final_predictions_scaled).flatten()
         
         if len(y_test_actual) > 0 and len(final_predictions) > 0:
-            rmse = np.sqrt(mean_squared_error(y_test_actual, final_predictions))
-            mae = mean_absolute_error(y_test_actual, final_predictions)
-            all_fold_metrics.append({'rmse': rmse, 'mae': mae})
+            metrics = tb_logger.log_prediction_quality(y_test_actual, final_predictions, fold=fold)
+            tb_logger.log_cv_fold_results(fold, metrics)
+            all_fold_metrics.append(metrics)
             all_y_test_actual.append(y_test_actual)
             all_final_predictions.append(final_predictions)
             all_test_indices.append(y_test.index[sequence_length:])
@@ -1325,6 +1565,9 @@ def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_len
         y_true_all = np.concatenate(all_y_test_actual).flatten()
         y_pred_all = np.concatenate(all_final_predictions).flatten()
         timestamps_all = pd.to_datetime(np.concatenate(all_test_indices))
+
+        tb_logger.log_backtest_chart(timestamps_all, y_true_all, y_pred_all)
+        tb_logger.log_prediction_distribution(y_true_all, y_pred_all)
 
         plt.figure(figsize=(15, 7))
         plt.plot(timestamps_all, y_true_all, label='Actual Price', color='blue', alpha=0.8)
@@ -1346,20 +1589,14 @@ def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_len
     # --- Aggregate and Log CV Results ---
     TerminalStyle.subheader("Phase 4: Aggregated Walk-Forward Validation Results")
     if all_fold_metrics:
-        avg_rmse = np.mean([m['rmse'] for m in all_fold_metrics])
-        avg_mae = np.mean([m['mae'] for m in all_fold_metrics])
-        TerminalStyle.metric("Average RMSE", f"{avg_rmse:.4f}")
-        TerminalStyle.metric("Average MAE", f"{avg_mae:.4f}")
-
-        log_dir = run_log_dir / f'evaluation_{horizon}h'
-        file_writer = tf.summary.create_file_writer(str(log_dir))
-        with file_writer.as_default():
-            tf.summary.scalar('avg_walk_forward_rmse', avg_rmse, step=horizon)
-            tf.summary.scalar('avg_walk_forward_mae', avg_mae, step=horizon)
-            for i, metrics in enumerate(all_fold_metrics):
-                tf.summary.scalar('rolling_rmse', metrics['rmse'], step=i)
-                tf.summary.scalar('rolling_mae', metrics['mae'], step=i)
-        TerminalStyle.success(f"Cross-validation metrics logged to TensorBoard dir: {log_dir}")
+        avg_metrics = {
+            'rmse': np.mean([m['rmse'] for m in all_fold_metrics]),
+            'mae': np.mean([m['mae'] for m in all_fold_metrics]),
+            'directional_accuracy': np.mean([m['directional_accuracy'] for m in all_fold_metrics])
+        }
+        tb_logger.log_final_cv_summary(avg_metrics)
+        TerminalStyle.metric("Average RMSE", f"{avg_metrics['rmse']:.4f}")
+        TerminalStyle.metric("Average MAE", f"{avg_metrics['mae']:.4f}")
 
     # --- Final Model Training on All Data ---
     TerminalStyle.subheader("Phase 5: Final Model Training on All Data")
@@ -1411,6 +1648,9 @@ def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_len
         joblib.dump(base_models[name], MODEL_DIR / f'base_{name}_{horizon}h.pkl')
         TerminalStyle.success(f"Final {name.upper()} model trained and saved ({i}/{len(model_names)})")
         
+    if hasattr(base_models.get('lgbm'), 'feature_importances_'):
+        tb_logger.log_feature_importance(feature_columns, base_models['lgbm'].feature_importances_)
+
     TerminalStyle.subheader("Phase 6: Final Meta-Model Training")
     
     meta_features_full = np.column_stack([
@@ -1422,6 +1662,7 @@ def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_len
     joblib.dump(meta_model, MODEL_DIR / f'meta_model_{horizon}h.pkl')
     
     TerminalStyle.success("Final meta-model trained and saved.")
+    tb_logger.close()
 
 def rotate_prediction_plots(prediction_dir: Path, base_name: str = "future_forecast"):
     """
