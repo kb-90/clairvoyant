@@ -6,10 +6,16 @@
 
 <p align="left">
   <a href="https://www.python.org/"><img alt="Python" src="https://img.shields.io/badge/-3.10%2B-grey?style=flat-square&logo=python&logoColor=white&labelColor=%233776AB" /></a>
-  <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" /></a>
+  <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" /></a>
   <a href=""><img src="https://img.shields.io/badge/-TensorBoard-%23FF6F00?style=flat-square&logo=tensorflow&logoColor=white&labelColor=%23FF6F00&color=white" /></a>
   <a href="https://xrpscan.com/"><img src="https://img.shields.io/badge/-XRPScan-darkgrey?style=flat-square&logo=xrp&logoColor=darkgrey&labelColor=grey" /></a>
-  <a><img src="https://img.shields.io/badge/ML-BiGRU-grey?style=flat-square&labelColor=magenta" /></a>
+  <a><img src="https://img.shields.io/badge/ML-BiGRU-grey?style=flat-square&labelColor=purple" /></a>
+  <a><img src="https://img.shields.io/badge/ML-LSTM-grey?style=flat-square&labelColor=magenta" /></a>
+  <a><img src="https://img.shields.io/badge/ML-CNN--LSTM-grey?style=flat-square&labelColor=pink" /></a>
+  <a><img src="https://img.shields.io/badge/ML-LightGBM-grey?style=flat-square&labelColor=red" /></a>
+  <a><img src="https://img.shields.io/badge/ML-XGBoost-grey?style=flat-square&labelColor=orange" /></a>
+  <a><img src="https://img.shields.io/badge/ML-Ridge--Regression-grey?style=flat-square&labelColor=yellow" /></a>
+  <a href="https://x.com/ccxt_official"><img src="https://camo.githubusercontent.com/c53c490ac1acb3809e20dc8f74ece8ab07a337deb9989ca5808a634ca1e2992e/68747470733a2f2f696d672e736869656c64732e696f2f747769747465722f666f6c6c6f772f636378745f6f6666696369616c2e7376673f7374796c653d736f6369616c266c6162656c3d43435854?style=flat-square" /></a>
 
   
 </p>
