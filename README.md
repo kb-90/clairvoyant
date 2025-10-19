@@ -4,21 +4,19 @@
   <img src="/assets/clairvoyant-banner.jpg?text=Clairvoyant+Project+Banner" alt="Clairvoyant Banner">
 </p>
 
-<p align="left">
-  <a><img src="https://img.shields.io/badge/-3.10%2B-grey?style=flat-square&logo=python&logoColor=white&labelColor=%233776AB" /></a>
-  <a><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" /></a>
-  <a><img src="https://img.shields.io/badge/-TensorBoard-orange?style=flat-square&logo=tensorflow&logoColor=white&labelColor=orange" /></a>
-  <a><img src="https://img.shields.io/badge/XRPScan-black?style=flat-square&logo=xrp&logoColor=white" /></a>
-  <a><img src="https://img.shields.io/badge/-CCXT-black?style=flat-square&logo=x&logoColor=white&labelColor=black" /></a>
-  <a><img src="https://img.shields.io/badge/ML-BiGRU-grey?style=flat-square&labelColor=purple" /></a>
-  <a><img src="https://img.shields.io/badge/ML-LSTM-grey?style=flat-square&labelColor=magenta" /></a>
-  <a><img src="https://img.shields.io/badge/ML-CNN--LSTM-grey?style=flat-square&labelColor=pink" /></a>
-  <a><img src="https://img.shields.io/badge/ML-LightGBM-grey?style=flat-square&labelColor=red" /></a>
-  <a><img src="https://img.shields.io/badge/ML-XGBoost-grey?style=flat-square&labelColor=orange" /></a>
-  <a><img src="https://img.shields.io/badge/ML-Ridge--Regression-grey?style=flat-square&labelColor=yellow" /></a>
-  
-
-  
+<p align="center">
+  <a href="https://www.python.org/" alt="Badge: Python 3.10+"><img src="https://img.shields.io/badge/-3.10%2B-grey?style=flat-square&logo=python&logoColor=white&labelColor=%233776AB"></a>
+  <a href="https://opensource.org/licenses/MIT" alt="License: MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue?style=flat-square"></a>
+  <a href="https://www.tensorflow.org/api_docs/python/tf/keras/layers/Bidirectional" alt="Badge: Bi-GRU"><img src="https://img.shields.io/badge/ML-BiGRU-grey?style=flat-square&labelColor=purple"></a>
+  <a href="https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM" alt="Badge: LSTM"><img src="https://img.shields.io/badge/ML-LSTM-grey?style=flat-square&labelColor=magenta"></a>
+  <a href="https://www.tensorflow.org/api_docs/python/tf/keras/layers/ConvLSTM1D" alt="Badge: CNN-LSTM"><img src="https://img.shields.io/badge/ML-CNN--LSTM-grey?style=flat-square&labelColor=red"></a>
+  <a href="https://lightgbm.readthedocs.io/en/latest/" alt="Badge: LightGBM"><img src="https://img.shields.io/badge/ML-LightGBM-grey?style=flat-square&labelColor=yellow"></a>
+  <a href="https://xgboost.readthedocs.io/en/stable/" alt="Badge: XGBoost"><img src="https://img.shields.io/badge/ML-XGBoost-grey?style=flat-square&labelColor=limegreen" /></a>
+  <a href="https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html" alt="Badge: Ridge Regression"><img src="https://img.shields.io/badge/ML-Ridge--Regression-grey?style=flat-square&labelColor=turquiose"></a>
+  <a href="https://en.wikipedia.org/wiki/RSS" alt="Badge: RSS"><img src="https://img.shields.io/badge/RSS-FFA500?style=for-the-badge&logo=rss&logoColor=white"></a>
+  <a href="httpshttps://github.com/ccxt/ccxt" alt="Badge: CCXT"><img src="https://img.shields.io/badge/-CCXT-black?style=flat-square&logo=x&logoColor=white&labelColor=black"></a>
+  <a href="https://www.tensorflow.org/tensorboard" alt="Badge: TensorBoard"><img src="https://img.shields.io/badge/-TensorBoard-orange?style=flat-square&logo=tensorflow&logoColor=white&labelColor=orange"></a>
+  <a href="https://xrpscan.com/" alt="Badge: XRPScan"><img src="https://img.shields.io/badge/XRPScan-black?style=flat-square&logo=xrp&logoColor=white"></a>
 </p>
 
 **Clairvoyant** is a sophisticated cryptocurrency price forecaster that synthesizes market data, news sentiment, and dynamic on-chain metrics using a powerful stacking ensemble model.
