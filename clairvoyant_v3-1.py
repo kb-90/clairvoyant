@@ -268,8 +268,9 @@ async def fetch_top_xrp_accounts(session: aiohttp.ClientSession, limit: int = 50
     """
     url = "https://api.xrpscan.com/api/v1/balances"
     TerminalStyle.info(f"Fetching top {limit} whale accounts from xrpscan API")
+    headers = {'Accept': 'application/json'}
     try:
-        async with session.get(url, timeout=30) as response:
+        async with session.get(url, timeout=30, headers=headers) as response:
             if response.status == 200:
                 data = await response.json()
                 addresses = [item['account'] for item in data]
@@ -1181,16 +1182,19 @@ class TradingTensorBoard:
         """Log backtest visualization"""
         fig, ax = plt.subplots(figsize=(15, 6))
         
-        ax.plot(timestamps, y_true, label='Actual Price', 
+        y_true_flat = y_true.flatten()
+        y_pred_flat = y_pred.flatten()
+
+        ax.plot(timestamps, y_true_flat, label='Actual Price', 
                 color='#00FF00', linewidth=2, alpha=0.8)
-        ax.plot(timestamps, y_pred, label='Predicted Price', 
+        ax.plot(timestamps, y_pred_flat, label='Predicted Price', 
                 color='#FF00FF', linewidth=2, linestyle='--', alpha=0.8)
         
         # Highlight prediction errors
-        error_pct = np.abs((y_true - y_pred) / y_true) * 100
+        error_pct = np.abs((y_true_flat - y_pred_flat) / y_true_flat) * 100
         colors = ['green' if e < 2 else 'yellow' if e < 5 else 'red' 
                   for e in error_pct]
-        ax.scatter(timestamps, y_pred, c=colors, s=20, alpha=0.6, 
+        ax.scatter(timestamps, y_pred_flat, c=colors, s=20, alpha=0.6, 
                   label='Error: Green<2%, Yellow<5%, Red>5%')
         
         ax.set_title(f'{self.horizon}h Backtest Performance', fontsize=14)
@@ -1425,7 +1429,7 @@ def create_sequences_optimized(data, seq_len):
 # --- 6. ENHANCED TRAINING & EVALUATION ---
 def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_length: int = TRAINING_CONFIG["SEQUENCE_LENGTH"], ticker: str = TRAINING_CONFIG["TICKER"], timeframe: str = TRAINING_CONFIG["TIMEFRAME"]) -> None:
     """
-    Trains, evaluates, and saves all models for a specific prediction horizon using rolling walk-forward validation.
+    Trains, evaluates, and saves all models for a specific prediction horizon using a FAST single train/test split.
     """
     TerminalStyle.header(f"TRAINING PIPELINE: {horizon}H PREDICTION HORIZON")
     
@@ -1463,219 +1467,118 @@ def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_len
     
     y, X = featured_data[['target']], featured_data.drop(columns='target')
     
-    TerminalStyle.subheader("Phase 3: Rolling Walk-Forward Validation")
-    n_splits = 5
-    tscv = TimeSeriesSplit(n_splits=n_splits)
+    # ============================================
+    # FAST TRAIN/TEST SPLIT - NO WALK-FORWARD
+    # ============================================
+    TerminalStyle.subheader("Phase 3: Train/Test Split (80/20)")
     
-    all_fold_metrics = []
-    all_y_test_actual = []
-    all_final_predictions = []
-    all_test_indices = []
+    split_idx = int(len(X) * 0.8)
+    X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+    y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
     
-    for fold, (train_index, test_index) in enumerate(tscv.split(X)):
-        TerminalStyle.info(f"Processing Fold {fold + 1}/{n_splits}...")
-        
-        X_train, X_test = X.iloc[train_index], X.iloc[test_index]
-        y_train, y_test = y.iloc[train_index], y.iloc[test_index]
+    TerminalStyle.info(f"Train size: {len(X_train)} | Test size: {len(X_test)}")
 
-        feature_scaler = RobustScaler()
-        target_scaler = MinMaxScaler()
-        
-        X_train_scaled = feature_scaler.fit_transform(X_train)
-        y_train_scaled = target_scaler.fit_transform(y_train)
-        X_test_scaled = feature_scaler.transform(X_test)
-
-        feature_columns = X_train.columns.tolist()
-
-        X_train_seq = create_sequences_optimized(X_train_scaled, sequence_length)
-        y_train_seq_cv = y_train_scaled[sequence_length:]
-        X_test_seq = create_sequences_optimized(X_test_scaled, sequence_length)
-        y_test_seq = y_test.values[sequence_length:]
-        y_test_actual = y_test.values[sequence_length:]
-        
-        X_train_tab = X_train_scaled[sequence_length:]
-        X_test_tab = X_test_scaled[sequence_length:]
-        X_train_tab_df = pd.DataFrame(X_train_tab, columns=feature_columns)
-        X_test_tab_df = pd.DataFrame(X_test_tab, columns=feature_columns)
-        
-        model_names = ['gru', 'lstm', 'cnn_lstm', 'lgbm', 'xgb']
-        base_models = {}
-        
-        for i, name in enumerate(model_names, 1):
-            if name in ['gru', 'lstm', 'cnn_lstm']:
-                epochs = TRAINING_CONFIG["CV_EPOCHS_DL"]
-                if TRAINING_CONFIG['OPTIMIZE_HYPERPARAMETERS']:
-                    def objective(trial):
-                        hyperparams = {
-                            'n_units': trial.suggest_int('n_units', 32, 128),
-                            'dropout': trial.suggest_float('dropout', 0.1, 0.5),
-                            'learning_rate': trial.suggest_float('learning_rate', 1e-4, 1e-2, log=True)
-                        }
-                        if name == 'cnn_lstm':
-                            hyperparams['conv_filters'] = trial.suggest_int('conv_filters', 32, 128)
-                            hyperparams['kernel_size'] = trial.suggest_int('kernel_size', 3, 7)
-
-                        model = KerasRegressorWrapper(
-                            create_cnn_lstm_model if name == 'cnn_lstm' else create_dl_model, 
-                            model_type=name, 
-                            epochs=epochs, 
-                            **hyperparams
-                        ).fit(X_train_seq, y_train_seq_cv, validation_data=(X_test_seq, y_test_seq), target_scaler=target_scaler, run_log_dir=run_log_dir)
-                        
-                        preds = model.predict(X_test_seq)
-                        return mean_squared_error(y_test_seq, preds)
-
-                    study = create_optuna_study(name)
-                    study.optimize(objective, n_trials=TRAINING_CONFIG['OPTUNA_TRIALS'])
-                    hyperparams = study.best_params
-                else:
-                    hyperparams = get_default_hyperparameters(name)
-                
-                if name == 'gru':
-                    base_models[name] = KerasRegressorWrapper(
-                        create_dl_model, model_type='gru', epochs=epochs, **hyperparams
-                    ).fit(X_train_seq, y_train_seq_cv, validation_data=(X_test_seq, y_test_seq), target_scaler=target_scaler, run_log_dir=run_log_dir)
-                elif name == 'lstm':
-                    base_models[name] = KerasRegressorWrapper(
-                        create_dl_model, model_type='lstm', epochs=epochs, **hyperparams
-                    ).fit(X_train_seq, y_train_seq_cv, validation_data=(X_test_seq, y_test_seq), target_scaler=target_scaler, run_log_dir=run_log_dir)
-                elif name == 'cnn_lstm':
-                    base_models[name] = KerasRegressorWrapper(
-                        create_cnn_lstm_model, model_type='cnn_lstm', epochs=epochs, **hyperparams
-                    ).fit(X_train_seq, y_train_seq_cv, validation_data=(X_test_seq, y_test_seq), target_scaler=target_scaler, run_log_dir=run_log_dir)
-            else:
-                params = TRAINING_CONFIG["MODEL_PARAMS"].get(name, {})
-                if name == 'lgbm':
-                    base_models[name] = LGBMRegressor(**params).fit(X_train_tab_df, y_train_seq_cv.ravel())
-                elif name == 'xgb':
-                    base_models[name] = xgb.XGBRegressor(**params).fit(X_train_tab_df, y_train_seq_cv.ravel())
-
-        meta_features_train = np.column_stack([
-            base_models[name].predict(X_train_seq if name in ['gru', 'lstm', 'cnn_lstm'] else X_train_tab_df)
-            for name in base_models
-        ])
-        
-        meta_model = Ridge().fit(meta_features_train, y_train_seq_cv.ravel())
-        
-        meta_features_test = np.column_stack([
-            base_models[name].predict(X_test_seq if name in ['gru', 'lstm', 'cnn_lstm'] else X_test_tab_df)
-            for name in base_models
-        ])
-        
-        final_predictions_scaled = meta_model.predict(meta_features_test).reshape(-1, 1)
-        final_predictions = target_scaler.inverse_transform(final_predictions_scaled).flatten()
-        
-        if len(y_test_actual) > 0 and len(final_predictions) > 0:
-            metrics = tb_logger.log_prediction_quality(y_test_actual, final_predictions, fold=fold)
-            tb_logger.log_cv_fold_results(fold, metrics)
-            all_fold_metrics.append(metrics)
-            all_y_test_actual.append(y_test_actual)
-            all_final_predictions.append(final_predictions)
-            all_test_indices.append(y_test.index[sequence_length:])
-
-    # --- Backtest Visualization ---
-    if all_y_test_actual:
-        TerminalStyle.subheader("Phase 3a: Backtest Visualization")
-        y_true_all = np.concatenate(all_y_test_actual).flatten()
-        y_pred_all = np.concatenate(all_final_predictions).flatten()
-        timestamps_all = pd.to_datetime(np.concatenate(all_test_indices))
-
-        tb_logger.log_backtest_chart(timestamps_all, y_true_all, y_pred_all)
-        tb_logger.log_prediction_distribution(y_true_all, y_pred_all)
-
-        plt.figure(figsize=(15, 7))
-        plt.plot(timestamps_all, y_true_all, label='Actual Price', color='blue', alpha=0.8)
-        plt.plot(timestamps_all, y_pred_all, label='Predicted Price (CV)', color='orange', linestyle='--')
-        
-        plt.title(f'Backtest Performance for {horizon}h Horizon', fontsize=16)
-        plt.xlabel('Date', fontsize=12)
-        plt.ylabel('Price (USDT)', fontsize=12)
-        plt.legend()
-        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
-        plt.tight_layout()
-        
-        Path('predictions').mkdir(parents=True, exist_ok=True)
-        plot_path = Path('predictions') / f'backtest_{horizon}h.png'
-        plt.savefig(plot_path, dpi=300)
-        plt.close()
-        TerminalStyle.success(f"Backtest plot saved to {plot_path}")
-
-    # --- Aggregate and Log CV Results ---
-    TerminalStyle.subheader("Phase 4: Aggregated Walk-Forward Validation Results")
-    if all_fold_metrics:
-        avg_metrics = {
-            'rmse': np.mean([m['rmse'] for m in all_fold_metrics]),
-            'mae': np.mean([m['mae'] for m in all_fold_metrics]),
-            'directional_accuracy': np.mean([m['directional_accuracy'] for m in all_fold_metrics])
-        }
-        tb_logger.log_final_cv_summary(avg_metrics)
-        TerminalStyle.metric("Average RMSE", f"{avg_metrics['rmse']:.4f}")
-        TerminalStyle.metric("Average MAE", f"{avg_metrics['mae']:.4f}")
-
-    # --- Final Model Training on All Data ---
-    TerminalStyle.subheader("Phase 5: Final Model Training on All Data")
-    
+    # Scale data
     feature_scaler = RobustScaler()
     target_scaler = MinMaxScaler()
     
-    X_scaled = feature_scaler.fit_transform(X)
-    y_scaled = target_scaler.fit_transform(y)
+    X_train_scaled = feature_scaler.fit_transform(X_train)
+    y_train_scaled = target_scaler.fit_transform(y_train)
+    X_test_scaled = feature_scaler.transform(X_test)
 
-    feature_columns = X.columns.tolist()
-    for obj, name in [(feature_columns, 'feature_columns'), (feature_scaler, 'features_scaler'), (target_scaler, 'target_scaler')]:
-        joblib.dump(obj, MODEL_DIR / f'{name}_{horizon}h.pkl')
-    TerminalStyle.success("Final scalers and feature columns saved.")
+    feature_columns = X_train.columns.tolist()
 
-    X_seq = create_sequences_optimized(X_scaled, sequence_length)
-    y_seq = y_scaled[sequence_length:]
-    X_tab = X_scaled[sequence_length:]
-    X_tab_df = pd.DataFrame(X_tab, columns=feature_columns)
+    # Create sequences
+    X_train_seq = create_sequences_optimized(X_train_scaled, sequence_length)
+    y_train_seq = y_train_scaled[sequence_length:]
+    X_test_seq = create_sequences_optimized(X_test_scaled, sequence_length)
+    y_test_seq = y_test.values[sequence_length:]
     
+    X_train_tab = X_train_scaled[sequence_length:]
+    X_test_tab = X_test_scaled[sequence_length:]
+    X_train_tab_df = pd.DataFrame(X_train_tab, columns=feature_columns)
+    X_test_tab_df = pd.DataFrame(X_test_tab, columns=feature_columns)
+    
+    # Train base models ONCE
     model_names = ['gru', 'lstm', 'cnn_lstm', 'lgbm', 'xgb']
     base_models = {}
     
     for i, name in enumerate(model_names, 1):
-        TerminalStyle.info(f"Training final {name.upper()} model...")
+        TerminalStyle.info(f"Training {name.upper()} ({i}/{len(model_names)})...")
+        
         if name in ['gru', 'lstm', 'cnn_lstm']:
-            epochs = TRAINING_CONFIG["DL_EPOCHS"]
+            epochs = TRAINING_CONFIG["CV_EPOCHS_DL"]
             hyperparams = get_default_hyperparameters(name)
             
             if name == 'gru':
                 base_models[name] = KerasRegressorWrapper(
                     create_dl_model, model_type='gru', epochs=epochs, **hyperparams
-                ).fit(X_seq, y_seq, run_log_dir=run_log_dir)
+                ).fit(X_train_seq, y_train_seq, validation_data=(X_test_seq, y_test_seq), target_scaler=target_scaler, run_log_dir=run_log_dir)
             elif name == 'lstm':
                 base_models[name] = KerasRegressorWrapper(
                     create_dl_model, model_type='lstm', epochs=epochs, **hyperparams
-                ).fit(X_seq, y_seq, run_log_dir=run_log_dir)
+                ).fit(X_train_seq, y_train_seq, validation_data=(X_test_seq, y_test_seq), target_scaler=target_scaler, run_log_dir=run_log_dir)
             elif name == 'cnn_lstm':
                 base_models[name] = KerasRegressorWrapper(
                     create_cnn_lstm_model, model_type='cnn_lstm', epochs=epochs, **hyperparams
-                ).fit(X_seq, y_seq, run_log_dir=run_log_dir)
+                ).fit(X_train_seq, y_train_seq, validation_data=(X_test_seq, y_test_seq), target_scaler=target_scaler, run_log_dir=run_log_dir)
         else:
             params = TRAINING_CONFIG["MODEL_PARAMS"].get(name, {})
             if name == 'lgbm':
-                base_models[name] = LGBMRegressor(**params).fit(X_tab_df, y_seq.ravel())
+                base_models[name] = LGBMRegressor(**params).fit(X_train_tab_df, y_train_seq.ravel())
             elif name == 'xgb':
-                base_models[name] = xgb.XGBRegressor(**params).fit(X_tab_df, y_seq.ravel())
+                base_models[name] = xgb.XGBRegressor(**params).fit(X_train_tab_df, y_train_seq.ravel())
         
-        joblib.dump(base_models[name], MODEL_DIR / f'base_{name}_{horizon}h.pkl')
-        TerminalStyle.success(f"Final {name.upper()} model trained and saved ({i}/{len(model_names)})")
-        
-    if hasattr(base_models.get('lgbm'), 'feature_importances_'):
-        tb_logger.log_feature_importance(feature_columns, base_models['lgbm'].feature_importances_)
+        TerminalStyle.success(f"{name.upper()} trained")
 
-    TerminalStyle.subheader("Phase 6: Final Meta-Model Training")
+    # Train meta-model
+    TerminalStyle.subheader("Phase 4: Meta-Model Training")
     
-    meta_features_full = np.column_stack([
-        base_models[name].predict(X_seq if name in ['gru', 'lstm', 'cnn_lstm'] else X_tab_df)
+    meta_features_train = np.column_stack([
+        base_models[name].predict(X_train_seq if name in ['gru', 'lstm', 'cnn_lstm'] else X_train_tab_df)
         for name in base_models
     ])
     
-    meta_model = Ridge().fit(meta_features_full, y_seq.ravel())
-    joblib.dump(meta_model, MODEL_DIR / f'meta_model_{horizon}h.pkl')
+    meta_model = Ridge().fit(meta_features_train, y_train_seq.ravel())
     
-    TerminalStyle.success("Final meta-model trained and saved.")
+    # Evaluate on test set
+    meta_features_test = np.column_stack([
+        base_models[name].predict(X_test_seq if name in ['gru', 'lstm', 'cnn_lstm'] else X_test_tab_df)
+        for name in base_models
+    ])
+    
+    final_predictions_scaled = meta_model.predict(meta_features_test).reshape(-1, 1)
+    final_predictions = target_scaler.inverse_transform(final_predictions_scaled).flatten()
+    
+    # Log metrics
+    metrics = tb_logger.log_prediction_quality(y_test_seq, final_predictions)
+    
+    TerminalStyle.subheader("Phase 5: Test Set Performance")
+    TerminalStyle.metric("RMSE", f"{metrics['rmse']:.4f}")
+    TerminalStyle.metric("MAE", f"{metrics['mae']:.4f}")
+    TerminalStyle.metric("Directional Accuracy", f"{metrics['directional_accuracy']:.1f}%", 
+                        positive=(metrics['directional_accuracy'] > 50))
+    
+    # Backtest visualization
+    timestamps_test = y_test.index[sequence_length:]
+    tb_logger.log_backtest_chart(timestamps_test, y_test_seq, final_predictions)
+    tb_logger.log_prediction_distribution(y_test_seq, final_predictions)
+    
+    # Save models and scalers
+    TerminalStyle.subheader("Phase 6: Saving Models")
+    for name in base_models:
+        joblib.dump(base_models[name], MODEL_DIR / f'base_{name}_{horizon}h.pkl')
+    
+    joblib.dump(meta_model, MODEL_DIR / f'meta_model_{horizon}h.pkl')
+    joblib.dump(feature_columns, MODEL_DIR / f'feature_columns_{horizon}h.pkl')
+    joblib.dump(feature_scaler, MODEL_DIR / f'features_scaler_{horizon}h.pkl')
+    joblib.dump(target_scaler, MODEL_DIR / f'target_scaler_{horizon}h.pkl')
+    
+    TerminalStyle.success("All models and scalers saved")
+    
+    if hasattr(base_models.get('lgbm'), 'feature_importances_'):
+        tb_logger.log_feature_importance(feature_columns, base_models['lgbm'].feature_importances_)
+    
     tb_logger.close()
 
 def rotate_prediction_plots(prediction_dir: Path, base_name: str = "future_forecast"):
@@ -1799,11 +1702,11 @@ def make_future_predictions(horizons: List[int], sequence_length: int = TRAINING
     data = load_data(ticker, timeframe, limit=sequence_length + 200)
     data = fetch_and_add_sentiment(data, ticker.split('/')[0])
     try:
-        data = asyncio.run(integrate_onchain_metrics(data, ticker.split('/')[0]))
+        data, _ = asyncio.run(integrate_onchain_metrics(data, ticker.split('/')[0]))
     except RuntimeError as e:
         if 'already running' in str(e):
             loop = asyncio.get_event_loop()
-            data = loop.run_until_complete(integrate_onchain_metrics(data, ticker.split('/')[0]))
+            data, _ = loop.run_until_complete(integrate_onchain_metrics(data, ticker.split('/')[0]))
         else:
             raise
     featured_data = feature_engineering(data)
