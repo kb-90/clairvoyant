@@ -1,0 +1,2 @@
+horizon,current_price,predicted_price,expected_change_pct,confidence_interval_lower,confidence_interval_upper,prediction_std,confidence_score,ci_width_pct,timestamp
+6h,2.4618,2.433997837906813,-1.1293428423587293,2.3722183483827184,2.495777327430908,0.03393466534287433,19.4020692697594,5.07637998374098,2025-10-20 18:13:30.522503+00:00
