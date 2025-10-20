@@ -1088,10 +1088,24 @@ class TradingTensorBoard:
     def log_prediction_quality(self, y_true: np.ndarray, y_pred: np.ndarray, 
                                fold: Optional[int] = None):
         """Log prediction quality metrics that traders care about"""
+        # Ensure arrays are flattened for consistent calculations
+        y_true = y_true.flatten()
+        y_pred = y_pred.flatten()
+
+        # Handle potential length mismatch, though they should be the same
+        if len(y_true) != len(y_pred):
+            min_len = min(len(y_true), len(y_pred))
+            y_true = y_true[:min_len]
+            y_pred = y_pred[:min_len]
+            logger.warning(f"Mismatch in prediction and ground truth lengths. Trimmed to {min_len} samples.")
+
         # Calculate trader-relevant metrics
         rmse = np.sqrt(np.mean((y_true - y_pred) ** 2))
         mae = np.mean(np.abs(y_true - y_pred))
-        mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+        
+        # Avoid division by zero for MAPE and price_error_pct
+        safe_y_true = np.where(y_true == 0, 1e-9, y_true)
+        mape = np.mean(np.abs((y_true - y_pred) / safe_y_true)) * 100
         
         # Directional accuracy (most important for traders)
         if len(y_true) > 1:
@@ -1102,7 +1116,7 @@ class TradingTensorBoard:
             directional_accuracy = 0
         
         # Price level accuracy
-        price_error_pct = np.abs((y_true - y_pred) / y_true) * 100
+        price_error_pct = np.abs((y_true - y_pred) / safe_y_true) * 100
         
         step = fold if fold is not None else 0
         suffix = f'_Fold_{fold}' if fold is not None else '_Final'
