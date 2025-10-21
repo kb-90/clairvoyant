@@ -17,7 +17,7 @@
   <a href="httpshttps://github.com/ccxt/ccxt" alt="Badge: CCXT"><img src="https://img.shields.io/badge/-CCXT-black?style=flat-square&logo=x&logoColor=white&labelColor=black"></a>
   <a href="https://www.tensorflow.org/tensorboard" alt="Badge: TensorBoard"><img src="https://img.shields.io/badge/-TensorBoard-orange?style=flat-square&logo=tensorflow&logoColor=white&labelColor=orange"></a>
   <a href="https://xrpscan.com/" alt="Badge: XRPScan"><img src="https://img.shields.io/badge/XRPScan-black?style=flat-square&logo=xrp&logoColor=white"></a>
-   <a href="https://www.paypal.com/paypalme/kb90fund" alt="Badge: Fund my dev"><img src="https://img.shields.io/badge/show_-support-blue?style=flat-square&logo=paypal&logoColor=white"></a>
+   <a href="https://www.paypal.com/paypalme/kb90fund" alt="Badge: Fund my dev"><img src="https://img.shields.io/badge/-support_me-blue?style=flat-square&logo=paypal&logoColor=white"></a>
 </p>
 
 **Clairvoyant** is a sophisticated cryptocurrency price forecaster that synthesizes market data, news sentiment, and dynamic on-chain metrics using a powerful stacking ensemble model.
