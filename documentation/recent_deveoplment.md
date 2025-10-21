@@ -179,3 +179,26 @@ Visual confidence indicators that show certainty at a glance
 Color consistency throughout (cyan/turquoise for headers, pink for emphasis, purple for sections)
 
 The script should now run 15-30% faster on CPU, especially during sequence creation and confidence calculations. The terminal output is much more modern and engaging while remaining highly readable for traders scanning predictions quickly!
+
+# IMPROVEMENTS TO LATEST VERSION 3.2
+
+## Performance Optimization: Walk-Forward Validation Removed
+
+- **Problem**: The previous walk-forward cross-validation process was extremely slow, making it impractical for real-time crypto prediction. It involved training 25 base models and 5 meta-models just for validation.
+- **Solution**: The entire walk-forward validation section has been replaced with a simple and fast 80/20 train/test split.
+- **Impact**:
+    - **Speed**: The training process is now 5-10x faster, delivering predictions in minutes instead of hours.
+    - **Relevance**: The model is now validated on the most recent 20% of the data, which is more relevant for volatile crypto markets.
+    - **Efficiency**: The new approach trains the base and meta models only once, significantly reducing computational overhead.
+- **Implementation**: The `train_and_evaluate_for_horizon` function was completely refactored to implement the new train/test split logic.
+
+## Bug Fixes
+
+- **Fixed `ValueError` in `log_backtest_chart`**: Corrected a bug where the truth value of a NumPy array was ambiguous. This was resolved by flattening the `y_true` and `y_pred` arrays before calculating the `error_pct`, ensuring the logic for color-coding prediction errors works correctly.
+- **Fixed `AttributeError` in `make_future_predictions`**: Corrected a bug where the return value of `integrate_onchain_metrics` was not being unpacked correctly, causing a tuple to be passed to a function expecting a DataFrame.
+- **Fixed `aiohttp.ContentTypeError` in `fetch_top_xrp_accounts`**: Added an `Accept: application/json` header to the request to ensure the server returns a JSON response, preventing an error when the API occasionally returns HTML.
+- **Fixed `TypeError` in `generate_verification_charts`**: Ensured that the `DatetimeIndex` of the `actuals_df` is timezone-aware by localizing it to UTC in the `load_data` function. This prevents comparison errors between timezone-aware and timezone-naive datetime objects.
+
+## Charting Improvements
+
+- **Improved Verification Charts**: The `generate_verification_charts` function has been refactored to plot all horizon predictions from a single run on one chart. This chart now includes the actual price movement as a white line, allowing for a clear and direct comparison of prediction accuracy against reality.
