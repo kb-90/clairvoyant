@@ -4,3 +4,12 @@
 /.vscode
 /clairvoyant.code-workspace
 /__pycache__
+
+# Ignore generated files and folders
+/logs/
+/models/
+/sentiment/
+/predictions/
+
+# Ignore environment files containing secrets
+.env
