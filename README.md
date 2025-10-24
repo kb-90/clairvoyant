@@ -114,10 +114,6 @@ Follow these steps to get Clairvoyant running on your local machine.
     ```
     The script will handle data fetching, training, and prediction automatically. Results, models, and logs will be saved in their respective directories (`/predictions`, `/models`, `/logs`).
 
-
-  <img src="/assets/clairvoyant_v3-1_terminal-01.jpg?text=Clairvoyant+getting+started" alt="Clairvoyant documentation" width="50%"> <img src="/assets/clairvoyant_v3-1_terminal-02.jpg?text=Clairvoyant+getting+started" alt="Clairvoyant documentation" width="50%"> # make these two images appear side by side like a 2 columned single row.
-
-
 ## Configuration
 
 All configuration is handled in the `.env` file. Here is a description of the available parameters:
