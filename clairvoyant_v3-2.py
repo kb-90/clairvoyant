@@ -1,3 +1,4 @@
+import argparse
 import ccxt
 import pandas as pd
 import numpy as np
@@ -1113,7 +1114,16 @@ class TradingTensorBoard:
         if len(y_true) > 1:
             true_direction = np.sign(np.diff(y_true))
             pred_direction = np.sign(np.diff(y_pred))
-            directional_accuracy = np.mean(true_direction == pred_direction) * 100
+            correct_direction = (true_direction == pred_direction)
+
+            # As per user request, introduce a tolerance. A prediction is also a "win" if the
+            # predicted price is within 0.0005 of the actual price, even if direction is wrong.
+            # This check is applied to the price at the end of each step in the diff.
+            price_difference = np.abs(y_true[1:] - y_pred[1:])
+            within_tolerance = (price_difference < 0.0005)
+            
+            # Combine the conditions: correct direction OR within price tolerance
+            directional_accuracy = np.mean(correct_direction | within_tolerance) * 100
         else:
             directional_accuracy = 0
         
@@ -1379,11 +1389,11 @@ def calculate_confidence_metrics(predictions: np.ndarray) -> dict:
         
         # Adaptive CI
         base_factor = 1.645
-        agreement_factor = np.clip(1 / (1 + (std_pred / mean_pred) * 10), 0.3, 1.0)
+        agreement_factor = np.clip(1 / (1 + (std_pred / (mean_pred + 1e-9)) * 10), 0.3, 1.0)
         adaptive_ci = base_factor * std_pred * agreement_factor
         
         # Confidence score
-        normalized_std = min(std_pred / mean_pred, 0.1)
+        normalized_std = min(std_pred / (mean_pred + 1e-9), 0.1)
         confidence = (1 - (normalized_std / 0.1)) * 100
         
         mean_preds.append(mean_pred)
@@ -1582,30 +1592,107 @@ def train_and_evaluate_for_horizon(horizon: int, run_log_dir: Path, sequence_len
     
     tb_logger.close()
 
-def rotate_prediction_plots(prediction_dir: Path, base_name: str = "future_forecast"):
-    """
-    Rotates the saved prediction plot images, keeping the last 3.
-    - Renames _2.png -> _3.png
-    - Renames _1.png -> _2.png
-    The new plot will then be saved as _1.png.
-    """
-    f3 = prediction_dir / f'{base_name}_3.png'
-    f2 = prediction_dir / f'{base_name}_2.png'
-    f1 = prediction_dir / f'{base_name}_1.png'
 
-    try:
+
+def verify_and_rotate_plots():
+    """Handles the rotation and verification of historical forecast plots at the start of a run."""
+    TerminalStyle.subheader("Phase 0: Verifying Previous Forecast")
+    prediction_dir = Path('predictions')
+    
+    f1 = prediction_dir / 'future_forecast_1.png'
+    f2 = prediction_dir / 'future_forecast_2.png'
+    f3 = prediction_dir / 'future_forecast_3.png'
+
+    # Rotate _2 -> _3 and _1 -> _2
+    if f2.exists():
+        TerminalStyle.info("Rotating future_forecast_2.png to future_forecast_3.png")
         if f3.exists():
-            f3.unlink() # Delete the oldest
-        if f2.exists():
-            f2.rename(f3) # #2 becomes #3
-        if f1.exists():
-            f1.rename(f2) # #1 becomes #2
-    except OSError as e:
-        logger.error(f"Error rotating prediction plots: {e}")
+            f3.unlink()
+        f2.rename(f3)
+    
+    if f1.exists():
+        TerminalStyle.info("Rotating future_forecast_1.png to future_forecast_2.png")
+        f1.rename(f2)
+    else:
+        TerminalStyle.info("No previous forecast (future_forecast_1.png) to verify.")
+        return
 
-def plot_future_predictions(predictions_df, ticker):
+    # Now, f2 contains the plot from the previous run. We will update it with actuals.
+    TerminalStyle.info("Verifying previous forecast and updating future_forecast_2.png...")
+    
+    try:
+        history_df = pd.read_csv(prediction_dir / 'predictions.csv', parse_dates=['timestamp'])
+        history_df['timestamp'] = pd.to_datetime(history_df['timestamp'], utc=True)
+    except (FileNotFoundError, pd.errors.EmptyDataError):
+        TerminalStyle.warning("Could not read prediction history. Skipping verification.")
+        return
+
+    if history_df.empty:
+        TerminalStyle.warning("Prediction history is empty. Skipping verification.")
+        return
+
+    # Find the second to last prediction run from the CSV
+    unique_timestamps = sorted(history_df['timestamp'].unique(), reverse=True)
+    if len(unique_timestamps) < 2:
+        TerminalStyle.info("Not enough historical runs to verify.")
+        return
+
+    last_run_timestamp = unique_timestamps[1]
+    last_run_preds = history_df[history_df['timestamp'] == last_run_timestamp].copy()
+
+    if last_run_preds.empty:
+        TerminalStyle.warning(f"Could not find predictions for run at {last_run_timestamp}. Skipping verification.")
+        return
+
+    ticker = os.getenv("TICKER", "XRP/USDT")
+    timeframe = os.getenv("TIMEFRAME", "1h")
+    
+    last_run_preds['horizon_hours'] = last_run_preds['horizon'].str.replace('h', '').astype(int)
+    max_h = last_run_preds['horizon_hours'].max()
+    
+    start_time = pd.to_datetime(last_run_timestamp)
+    end_time = pd.Timestamp.now(tz='UTC')
+    hours_to_fetch = int((end_time - start_time).total_seconds() / 3600) + max_h + 2
+
+    TerminalStyle.info(f"Fetching latest price data for verification window...")
+    actuals_df = load_data(ticker, timeframe, limit=hours_to_fetch)
+    verification_actuals = actuals_df[(actuals_df.index >= start_time) & (actuals_df.index <= end_time)]
+
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(15, 8))
+    colors = ['#8A2BE2', '#FF69B4', '#40E0D0', '#FFA500']
+
+    start_price = last_run_preds['current_price'].iloc[0]
+
+    for i, row in enumerate(last_run_preds.itertuples()):
+        future_time = start_time + pd.Timedelta(hours=row.horizon_hours)
+        color = colors[i % len(colors)]
+        ax.plot([start_time, future_time], [start_price, row.predicted_price], linestyle='--', color=color, alpha=0.7, linewidth=2)
+        ax.plot(future_time, row.predicted_price, 'x', color=color, markersize=12, markeredgewidth=3, label=f'{row.horizon} Prediction', zorder=5)
+
+    ax.plot(start_time, start_price, 'o', color='white', markersize=12, zorder=11, label='Original Forecast Price')
+
+    if not verification_actuals.empty:
+        ax.plot(verification_actuals.index, verification_actuals['close'], color='white', linewidth=2.5, label='Actual Price Path', zorder=10, alpha=0.9)
+
+    ax.legend(loc='best', fontsize=10)
+    ax.set_title(f'{ticker} Forecast vs Actual (Prediction from {start_time.strftime("%Y-%m-%d %H:%M")})', fontsize=16, color='white', fontweight='bold')
+    ax.set_xlabel('Date', fontsize=12, color='white')
+    ax.set_ylabel('Price (USDT)', fontsize=12, color='white')
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, color='#555555', alpha=0.3)
+    
+    import matplotlib.dates as mdates
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+
+    plt.savefig(f2, dpi=300, bbox_inches='tight')
+    plt.close()
+    TerminalStyle.success(f"Verification chart updated and saved to {f2.name}")
+
+def plot_future_forecast(predictions_df, ticker):
     """
-    Plots the future predictions on a chart with a dark theme.
+    Plots ALL future prediction horizons on a single chart with a dark theme.
     """
     if predictions_df.empty:
         return
@@ -1621,55 +1708,65 @@ def plot_future_predictions(predictions_df, ticker):
     plt.style.use('dark_background')
     fig, ax = plt.subplots(figsize=(15, 8))
     
-    # Define the color palette
-    colors = ['#8A2BE2', '#FF69B4', '#40E0D0', '#FFA500'] # Purple, Pink, Turquoise, Orange
+    # Define the color palette - one color per horizon
+    colors = ['#8A2BE2', '#FF69B4', '#40E0D0', '#FFA500']  # Purple, Pink, Turquoise, Orange
 
     # --- Data Preparation ---
     latest_preds['horizon_hours'] = latest_preds['horizon'].str.replace('h', '').astype(int)
-    latest_preds.sort_values('horizon_hours', inplace=True)
+    latest_preds = latest_preds.sort_values('horizon_hours')
+    
+    # Ensure we have all horizons before plotting
+    if len(latest_preds) == 0:
+        logger.warning("No predictions found for the latest timestamp")
+        return
     
     start_time = pd.to_datetime(latest_preds['timestamp'].iloc[0])
     start_price = latest_preds['current_price'].iloc[0]
 
     # Plot current price as a starting point
-    ax.plot(start_time, start_price, 'o', color='white', markersize=10, label='Current Price', zorder=10)
+    ax.plot(start_time, start_price, 'o', color='white', markersize=12, label='Current Price', zorder=10)
 
-    # --- Plotting Predictions ---
+    # --- Plot ALL Horizons ---
     for i, row in enumerate(latest_preds.itertuples()):
         future_time = start_time + pd.Timedelta(hours=row.horizon_hours)
         color = colors[i % len(colors)]
         
-        # Line from current to predicted
-        ax.plot([start_time, future_time], [start_price, row.predicted_price], linestyle='--', color=color, alpha=0.8)
+        # Dashed line from current to predicted
+        ax.plot([start_time, future_time], [start_price, row.predicted_price], 
+                linestyle='--', color=color, alpha=0.8, linewidth=2)
         
-        # Predicted point
-        ax.plot(future_time, row.predicted_price, 'o', color=color, markersize=8, label=f'{row.horizon} Prediction')
+        # Predicted price point
+        ax.plot(future_time, row.predicted_price, 'o', color=color, markersize=10, 
+                label=f'{row.horizon} Prediction', zorder=5)
         
-        # Confidence interval fill
-        ax.fill_between([start_time, future_time], 
-                        [start_price, row.confidence_interval_lower], 
-                        [start_price, row.confidence_interval_upper], 
-                        color=color, alpha=0.15)
+        # Confidence interval shaded area
+        # if hasattr(row, 'confidence_interval_lower') and hasattr(row, 'confidence_interval_upper'):
+        #     # Create polygon for shaded confidence area
+        #     times = [start_time, future_time, future_time, start_time]
+        #     prices = [start_price, row.confidence_interval_upper, row.confidence_interval_lower, start_price]
+        #     ax.fill(times, prices, color=color, alpha=0.15)
 
     # --- Formatting ---
-    ax.legend()
-    ax.set_title(f'{ticker} Future Price Forecast', fontsize=18, color='white')
+    ax.legend(loc='best', fontsize=10)
+    ax.set_title(f'{ticker} Future Price Forecast', fontsize=18, color='white', fontweight='bold')
     ax.set_xlabel('Date', fontsize=12, color='white')
     ax.set_ylabel('Price (USDT)', fontsize=12, color='white')
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, color='#555555')
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, color='#555555', alpha=0.3)
+    
+    # Format x-axis to show dates nicely
+    import matplotlib.dates as mdates
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+    plt.xticks(rotation=45, ha='right')  
     plt.tight_layout()
 
-    # --- Rotation and Saving ---
+        # --- Saving ---
     prediction_dir = Path('predictions')
     base_name = "future_forecast"
-    
-    rotate_prediction_plots(prediction_dir, base_name) # Rotate old plots
-
-    plot_path = prediction_dir / f'{base_name}_1.png' # Always save new plot as _1
-    plt.savefig(plot_path, dpi=300)
+    plot_path = prediction_dir / f'{base_name}_1.png'  # Always save new plot as _1
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.close()
     TerminalStyle.success(f"Future forecast plot saved to {plot_path}")
-
+    
 # --- 7. FUTURE PREDICTION WITH IMPROVED UNCERTAINTY ---
 def make_future_predictions(horizons: List[int], sequence_length: int = TRAINING_CONFIG["SEQUENCE_LENGTH"], ticker: str = TRAINING_CONFIG["TICKER"], timeframe: str = TRAINING_CONFIG["TIMEFRAME"]) -> None:
     """
@@ -1718,6 +1815,7 @@ def make_future_predictions(horizons: List[int], sequence_length: int = TRAINING
     
     print(f"\n{TerminalColors.BOLD}{TerminalColors.TURQUOISE}Current {ticker} Price: {TerminalColors.PINK}{current_price:.4f} USDT{TerminalColors.ENDC}\n")
 
+    timestamp = pd.Timestamp.now(tz='UTC')
     for horizon in horizons:
         try:
             if horizon not in model_cache:
@@ -1763,7 +1861,6 @@ def make_future_predictions(horizons: List[int], sequence_length: int = TRAINING
             ci_width_pct = ((ci_upper - ci_lower) / future_price) * 100
             
             price_change = ((future_price - current_price) / current_price) * 100
-            timestamp = pd.Timestamp.now(tz='UTC')
             
             # Display with confidence
             TerminalStyle.prediction_box(
@@ -1829,93 +1926,12 @@ def make_future_predictions(horizons: List[int], sequence_length: int = TRAINING
         print(f"\n{TerminalColors.DIM}Predictions saved to: {log_path}{TerminalColors.ENDC}")
         TerminalStyle.info(f"Using {CI_METHOD.upper()} confidence interval method")
 
-        # Generate and save the plot
-        plot_future_predictions(pred_df, ticker)
+        # Generate and save the plot - THIS SHOULD ONLY BE CALLED ONCE
+        plot_future_forecast(pred_df, ticker)
+    else:
+        TerminalStyle.warning("No predictions were generated")
 
-def generate_verification_charts():
-    """
-    Overwrites older forecast plots with verification charts that include actual price movement.
-    """
-    TerminalStyle.subheader("Phase 8: Generating Verification Charts")
-    prediction_dir = Path('predictions')
-    try:
-        history_df = pd.read_csv(prediction_dir / 'predictions.csv', parse_dates=['timestamp'])
-        history_df['timestamp'] = pd.to_datetime(history_df['timestamp']).dt.tz_convert('UTC')
-    except (FileNotFoundError, pd.errors.EmptyDataError):
-        TerminalStyle.info("No prediction history found, skipping verification charts.")
-        return
 
-    # Identify the timestamps of the last 3 runs
-    recent_run_timestamps = sorted(history_df['timestamp'].unique(), reverse=True)
-    
-    # We can verify the 2nd and 3rd most recent runs
-    runs_to_verify = []
-    if len(recent_run_timestamps) > 1:
-        runs_to_verify.append((recent_run_timestamps[1], 2))
-    if len(recent_run_timestamps) > 2:
-        runs_to_verify.append((recent_run_timestamps[2], 3))
-
-    if not runs_to_verify:
-        TerminalStyle.info("Not enough historical runs to generate verification charts.")
-        return
-
-    # Fetch the latest price data to use as ground truth
-    TerminalStyle.info("Fetching latest price data for verification...")
-    ticker = os.getenv("TICKER", "XRP/USDT")
-    timeframe = os.getenv("TIMEFRAME", "1h")
-    
-    oldest_pred_time = min(pd.to_datetime(t[0]) for t in runs_to_verify)
-    max_horizon = max(int(h.replace('h','')) for h in history_df['horizon'].unique())
-    hours_to_fetch = int((pd.Timestamp.now(tz='UTC') - oldest_pred_time).total_seconds() / 3600) + max_horizon
-    
-    actuals_df = load_data(ticker, timeframe, limit=hours_to_fetch + 5)
-
-    for run_timestamp, file_index in runs_to_verify:
-        run_preds = history_df[history_df['timestamp'] == run_timestamp].copy()
-        if run_preds.empty:
-            continue
-
-        TerminalStyle.info(f"Generating verification chart for prediction made at {run_timestamp.strftime('%Y-%m-%d %H:%M')}...")
-
-        # --- Charting Logic ---
-        plt.style.use('dark_background')
-        fig, ax = plt.subplots(figsize=(15, 8))
-        colors = ['#8A2BE2', '#FF69B4', '#40E0D0', '#FFA500']
-
-        run_preds['horizon_hours'] = run_preds['horizon'].str.replace('h', '').astype(int)
-        run_preds.sort_values('horizon_hours', inplace=True)
-
-        start_price = run_preds['current_price'].iloc[0]
-        max_h = run_preds['horizon_hours'].max()
-        end_time = run_timestamp + pd.Timedelta(hours=max_h)
-
-        # Filter actual price data for the relevant window
-        verification_actuals = actuals_df[(actuals_df.index >= run_timestamp) & (actuals_df.index <= end_time)]
-
-        # Plot actual price movement
-        ax.plot(verification_actuals.index, verification_actuals['close'], color='white', linewidth=2.5, label='Actual Price', zorder=10)
-        ax.plot(run_timestamp, start_price, 'o', color='white', markersize=10, zorder=10)
-
-        # Overlay the original predictions
-        for i, row in enumerate(run_preds.itertuples()):
-            future_time = run_timestamp + pd.Timedelta(hours=row.horizon_hours)
-            color = colors[i % len(colors)]
-            ax.plot([run_timestamp, future_time], [start_price, row.predicted_price], linestyle='--', color=color, alpha=0.8)
-            ax.plot(future_time, row.predicted_price, 'x', color=color, markersize=10, label=f'{row.horizon} Prediction')
-
-        # --- Formatting ---
-        ax.legend()
-        ax.set_title(f'{ticker} Forecast vs. Actual (Prediction from {run_timestamp.strftime("%Y-%m-%d %H:%M")})', fontsize=16, color='white')
-        ax.set_xlabel('Date', fontsize=12, color='white')
-        ax.set_ylabel('Price (USDT)', fontsize=12, color='white')
-        ax.grid(True, which='both', linestyle='--', linewidth=0.5, color='#555555')
-        plt.tight_layout()
-
-        # --- Overwriting Save ---
-        plot_path = prediction_dir / f'future_forecast_{file_index}.png'
-        plt.savefig(plot_path, dpi=300)
-        plt.close()
-        TerminalStyle.success(f"Verification chart saved, overwriting {plot_path.name}")
 
 # --- 8. MAIN EXECUTION ---
 if __name__ == '__main__':
@@ -1959,23 +1975,35 @@ if __name__ == '__main__':
     current_run_log_dir.mkdir()
     TerminalStyle.success(f"Created new log directory for this run: {current_run_log_dir}")
 
-    # Train models for each horizon
-    for h in TRAINING_CONFIG["PREDICTION_HORIZONS"]:
-        train_and_evaluate_for_horizon(horizon=h, run_log_dir=current_run_log_dir)
+    # --- Main Execution Logic ---
+    verify_and_rotate_plots()
+
+    parser = argparse.ArgumentParser(description='Clairvoyant v3.2 - XRP Price Forecaster')
+    parser.add_argument('--train', action='store_true', help='Run the training pipeline.')
+    parser.add_argument('--predict', action='store_true', help='Run the prediction pipeline.')
+    args = parser.parse_args()
+
+    # If no flags are specified, run both training and prediction
+    if not args.train and not args.predict:
+        args.train = True
+        args.predict = True
+
+    if args.train:
+        # Train models for each horizon
+        for h in TRAINING_CONFIG["PREDICTION_HORIZONS"]:
+            train_and_evaluate_for_horizon(horizon=h, run_log_dir=current_run_log_dir)
     
-    # Generate future predictions and the forecast plot
-    make_future_predictions(horizons=TRAINING_CONFIG["PREDICTION_HORIZONS"])
-    
-    # Generate verification plots for previous runs
-    generate_verification_charts()
+    if args.predict:
+        # Generate future predictions and the forecast plot
+        make_future_predictions(horizons=TRAINING_CONFIG["PREDICTION_HORIZONS"])
 
     print(f"\n{TerminalColors.BOLD}{TerminalColors.TURQUOISE}{'═' * 80}{TerminalColors.ENDC}")
-    print(f"{TerminalColors.BOLD}{TerminalColors.TURQUOISE}║{TerminalColors.PINK}{'PREDICTIONS COMPLETE'.center(78)}{TerminalColors.TURQUOISE}║{TerminalColors.ENDC}")
+    print(f"{TerminalColors.BOLD}{TerminalColors.TURQUOISE}║{TerminalColors.PINK}{'CLAIRVOYANT RUN COMPLETE'.center(78)}{TerminalColors.TURQUOISE}║{TerminalColors.ENDC}")
     print(f"{TerminalColors.BOLD}{TerminalColors.TURQUOISE}{'═' * 80}{TerminalColors.ENDC}\n")
     
-    TerminalStyle.info("All operations completed successfully")
-    TerminalStyle.info(f"Models saved to: {MODEL_DIR}")
-    TerminalStyle.info("Check TensorBoard logs for detailed training metrics")
-    TerminalStyle.info(f"View runs: tensorboard --logdir={log_root}")
+    TerminalStyle.info("All requested operations completed successfully.")
+    TerminalStyle.info(f"Models are saved in: {MODEL_DIR}")
+    TerminalStyle.info(f"Predictions and charts are in: {Path('predictions')}")
+    TerminalStyle.info(f"Check TensorBoard logs for detailed training metrics: tensorboard --logdir={log_root}")
     
     print()

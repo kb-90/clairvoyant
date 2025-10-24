@@ -1,4 +1,4 @@
-# CLAIRVOYANT v3.1 - XRP PRICE PREDICTOR
+# CLAIRVOYANT v3.2 - XRP PRICE FORECASTER
 
 <p>
   <img src="/assets/clairvoyant-banner.jpg?text=Clairvoyant+Project+Banner" alt="Clairvoyant Banner">
@@ -17,11 +17,12 @@
   <a href="httpshttps://github.com/ccxt/ccxt" alt="Badge: CCXT"><img src="https://img.shields.io/badge/-CCXT-black?style=flat-square&logo=x&logoColor=white&labelColor=black"></a>
   <a href="https://www.tensorflow.org/tensorboard" alt="Badge: TensorBoard"><img src="https://img.shields.io/badge/-TensorBoard-orange?style=flat-square&logo=tensorflow&logoColor=white&labelColor=orange"></a>
   <a href="https://xrpscan.com/" alt="Badge: XRPScan"><img src="https://img.shields.io/badge/XRPScan-black?style=flat-square&logo=xrp&logoColor=white"></a>
+  <a href="https://www.paypal.com/paypalme/kb90fund" alt="Badge: Fund my dev"><img src="https://img.shields.io/badge/-support_me-blue?style=flat-square&logo=paypal&logoColor=white"></a>
 </p>
 
 **Clairvoyant** is a sophisticated cryptocurrency price forecaster that synthesizes market data, news sentiment, and dynamic on-chain metrics using a powerful stacking ensemble model.
 
-Version 3.1 introduces a robust, dynamic on-chain analysis engine that moves beyond static metrics to track the real-time activity of the wealthiest XRP accounts, providing a true insight into market-moving whale behavior.
+Version 3.2 introduces significant performance enhancements, including a faster 80/20 train/test split and improved charting functionalities. It builds upon the robust, dynamic on-chain analysis engine from v3.1 that moves beyond static metrics to track the real-time activity of the wealthiest XRP accounts, providing a true insight into market-moving whale behavior.
 
 ## Table of Contents
 - [Why Clairvoyant?](#why-clairvoyant)
@@ -67,7 +68,7 @@ The Clairvoyant architecture is built on three core data pillars that feed into 
 
 2.  **Sentiment Data Pillar**: Scrapes and analyzes news articles from over 14 financial RSS feeds. Using a custom crypto-specific lexicon, it generates a sentiment score that gauges the mood of the market.
 
-3.  **On-Chain Data Pillar (Dynamic)**: This is the key innovation in v3.1. The system dynamically identifies the top 50 "whale" accounts by querying the `xrpscan.com` API. It then analyzes the last 12 hours of transactions for these accounts to detect significant market pressure from major players.
+3.  **On-Chain Data Pillar (Dynamic)**: This is the key innovation introduced in v3.1. The system dynamically identifies the top 50 "whale" accounts by querying the `xrpscan.com` API. It then analyzes the last 12 hours of transactions for these accounts to detect significant market pressure from major players.
 
 These three data sources are processed into a rich feature set and fed into a two-layer stacking ensemble:
 
@@ -109,9 +110,13 @@ Follow these steps to get Clairvoyant running on your local machine.
 4.  **Run the Script**
     Execute the main script from your terminal:
     ```bash
-    python clairvoyant_v3-1.py
+    python clairvoyant_v3-2.py
     ```
     The script will handle data fetching, training, and prediction automatically. Results, models, and logs will be saved in their respective directories (`/predictions`, `/models`, `/logs`).
+
+
+  <img src="/assets/clairvoyant_v3-1_terminal-01.jpg?text=Clairvoyant+getting+started" alt="Clairvoyant documentation" width="50%"> <img src="/assets/clairvoyant_v3-1_terminal-02.jpg?text=Clairvoyant+getting+started" alt="Clairvoyant documentation" width="50%"> # make these two images appear side by side like a 2 columned single row.
+
 
 ## Configuration
 
@@ -132,7 +137,7 @@ All configuration is handled in the `.env` file. Here is a description of the av
 ```text
 clairvoyant/
 ├── .env                  # User-configurable parameters for the script
-├── clairvoyant_v3-1.py   # The core script containing all logic
+├── clairvoyant_v3-2.py   # The core script containing all logic
 ├── requirements.txt      # Project dependencies
 ├── README.md             # This file
 ├── documentation/        # Contains user guides and development notes
@@ -146,7 +151,9 @@ clairvoyant/
 │   └── meta_model_[x]h.pkl
 ├── predictions/          # Logs predictions and backtest plots
 │   ├── predictions.csv
-│   └── backtest_[x]h.png
+│   ├── future_forecast_1.png
+    ├── future_forecast_2.png
+    └── future_forecast_3.png
 └── sentiment/            # Caches sentiment data and trend plots
     ├── news_sentiment_XRP.csv
     └── sentiment_trend_XRP.png
