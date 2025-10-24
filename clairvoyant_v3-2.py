@@ -119,7 +119,7 @@ class TerminalStyle:
 
         # Helper to strip ANSI codes for accurate length calculation
         def strip_ansi(text):
-            return re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', text)
+            return re.sub(r'\x1B(?:[@-Z\-_]|[[0-?]*[ -/]*[@-~])', '', text)
 
         # Confidence visualization
         conf_color = TerminalColors.ENDC
@@ -1650,7 +1650,7 @@ def verify_and_rotate_plots():
     last_run_preds['horizon_hours'] = last_run_preds['horizon'].str.replace('h', '').astype(int)
     max_h = last_run_preds['horizon_hours'].max()
     
-    start_time = pd.to_datetime(last_run_timestamp)
+    start_time = pd.to_datetime(last_run_preds['timestamp'].iloc[0])
     end_time = pd.Timestamp.now(tz='UTC')
     hours_to_fetch = int((end_time - start_time).total_seconds() / 3600) + max_h + 2
 
