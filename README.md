@@ -78,8 +78,6 @@ The Clairvoyant architecture is built on three core data pillars that feed into 
 - ***Base Models***: A diverse set of five models (Bi-GRU, Bi-LSTM, CNN-LSTM, LightGBM, XGBoost) that capture different types of patterns in the data.
 - ***Meta-Model***: A `Ridge` regressor that intelligently combines the predictions from the base models into a single, more accurate, and robust final forecast.
 
-===
-
 ## Key Features
 
 - **Dynamic On-Chain Analysis**: Moves beyond static metrics by identifying and tracking the activity of the top 50 XRP accounts in real-time.
@@ -93,12 +91,8 @@ The Clairvoyant architecture is built on three core data pillars that feed into 
 - **Multi-Horizon Forecasting**: Trains specialized models to predict prices for various time horizons.
 - **Automated Pipeline**: Fully automated process from data fetching and feature engineering to training and prediction.
 
-<div class="col-12" align="center">
-  <div class="col-6"><img align="center" src="/assets/future_forecast_readme_2.png" alt="Clairvoyant XRP Price Forecaster - Predicted Plot Chart"></div>
-  <div class="col-6"><img align="center" src="/assets/sentiment_trend_XRP_readme.png" alt="Clairvoyant XRP Price Forecaster - XRP Sentiment Trend Analyaia Chart"></div>
-</div>
-
-===
+<img align="center" width="50%" src="/assets/future_forecast_readme_2.png" alt="Clairvoyant XRP Price Forecaster - Predicted Plot Chart">
+<img align="center" width="50%" src="/assets/sentiment_trend_XRP_readme.png" alt="Clairvoyant XRP Price Forecaster - XRP Sentiment Trend Analyaia Chart">
 
 ## Getting Started
 
