@@ -160,6 +160,7 @@ clairvoyant/
 
 This project utilizes several open-source libraries. We are grateful to the developers and contributors of these projects.
 
+-   **AFINN**: Licensed under the Apache 2.0 License.
 -   **CCXT**: Licensed under the MIT License.
 -   **NLTK (Natural Language Toolkit)**: Licensed under the Apache 2.0 License.
 -   **aiohttp**: Licensed under the Apache 2.0 License.
