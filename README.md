@@ -1,7 +1,7 @@
 # CLAIRVOYANT v3.2 - XRP PRICE FORECASTER
 
 <p>
-  <img src="/assets/clairvoyant-banner.jpg?text=Clairvoyant+Project+Banner" alt="Clairvoyant Banner">
+  <img src="/assets/clairvoyant-banner.jpg" alt="Clairvoyant Banner">
 </p>
 
 <p align="center">
@@ -32,6 +32,7 @@ Version 3.2 introduces significant performance enhancements, including a faster 
 - [Getting Started](#getting-started)
 - [Configuration](#configuration)
 - [Project Structure](#project-structure)
+- [Acknowledgements & Licenses](#acknowledgements--licenses)
 - [Disclaimer](#disclaimer)
 
 ## Why Clairvoyant?
@@ -154,6 +155,20 @@ clairvoyant/
     ├── news_sentiment_XRP.csv
     └── sentiment_trend_XRP.png
 ```
+
+## Acknowledgements & Licenses
+
+This project utilizes several open-source libraries. We are grateful to the developers and contributors of these projects.
+
+-   **CCXT**: Licensed under the MIT License.
+-   **NLTK (Natural Language Toolkit)**: Licensed under the Apache 2.0 License.
+-   **aiohttp**: Licensed under the Apache 2.0 License.
+-   **pandas**: Licensed under the BSD 3-Clause License.
+-   **joblib**: Licensed under the BSD 3-Clause License.
+-   **XGBoost**: Licensed under the Apache 2.0 License.
+-   **ta**: Licensed under the MIT License.
+
+*This list is not exhaustive. For a complete list of dependencies and their licenses, you can use tools like `pip-licenses`.*
 
 ## Disclaimer
 
