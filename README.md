@@ -92,8 +92,8 @@ The Clairvoyant architecture is built on three core data pillars that feed into 
 - **Automated Pipeline**: Fully automated process from data fetching and feature engineering to training and prediction.
 
 <p align="center">
-  <img width="50%" src="/assets/future_forecast_readme_2.png" alt="Clairvoyant XRP Price Forecaster - Predicted Plot Chart">
-  <img align="center" width="50%" src="/assets/sentiment_trend_XRP_readme.png" alt="Clairvoyant XRP Price Forecaster - XRP Sentiment Trend Analyaia Chart">
+  <img width="49" src="/assets/future_forecast_readme_2.png" alt="Clairvoyant XRP Price Forecaster - Predicted Plot Chart">
+  <img width="49%" src="/assets/sentiment_trend_XRP_readme.png" alt="Clairvoyant XRP Price Forecaster - XRP Sentiment Trend Analyaia Chart">
 </p>
 
 ## Getting Started
