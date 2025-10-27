@@ -1,48 +1,47 @@
+# Standard library imports
 import argparse
-import ccxt
-import pandas as pd
-import numpy as np
-import joblib
-import time
-import os
-from pathlib import Path
 import asyncio
-import logging
-from typing import List
-from dotenv import load_dotenv
-# Import TA and sentiment libraries
-from tensorflow.keras.optimizers import Adam #type: ignore
-from tensorflow.keras.callbacks import Callback # type: ignore
-from ta.momentum import RSIIndicator, StochasticOscillator, ROCIndicator
-from ta.trend import MACD, EMAIndicator, ADXIndicator, CCIIndicator
-from ta.volatility import BollingerBands, AverageTrueRange, KeltnerChannel
-from ta.volume import OnBalanceVolumeIndicator, MFIIndicator, ChaikinMoneyFlowIndicator
-import nltk
-from afinn import Afinn
-from lexicon.crypto_lexicon import CRYPTO_LEXICON
-import matplotlib.pyplot as plt
-import feedparser
-import aiohttp
-import seaborn as sns
 import io
+import logging
+import os
 import re
+import time
+from pathlib import Path
+from typing import Dict, List, Optional
 
-# Import ML/DL libraries
-from sklearn.model_selection import train_test_split, TimeSeriesSplit
-from sklearn.preprocessing import MinMaxScaler, RobustScaler
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.linear_model import Ridge
-from sklearn.cluster import KMeans
-from sklearn.metrics import mean_squared_error, mean_absolute_error
-from tensorflow.keras.models import Sequential # type: ignore
-from tensorflow.keras.layers import GRU, LSTM, Dense, Dropout, Input, Bidirectional, Conv1D, BatchNormalization # type: ignore
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, TensorBoard # type: ignore
+# Third-party imports
+import aiohttp
+from afinn import Afinn
+import ccxt
+from dotenv import load_dotenv
+import feedparser
+import joblib
+from lexicon.crypto_lexicon import CRYPTO_LEXICON
 from lightgbm import LGBMRegressor
+import matplotlib.pyplot as plt
+import nltk
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from sklearn.cluster import KMeans
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+from sklearn.linear_model import Ridge
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.model_selection import TimeSeriesSplit, train_test_split
+from sklearn.preprocessing import MinMaxScaler, RobustScaler
+from ta.momentum import ROCIndicator, RSIIndicator, StochasticOscillator
+from ta.trend import ADXIndicator, CCIIndicator, EMAIndicator, MACD
+from ta.volatility import AverageTrueRange, BollingerBands, KeltnerChannel
+from ta.volume import ChaikinMoneyFlowIndicator, MFIIndicator, OnBalanceVolumeIndicator
+import tensorflow as tf
+from tensorflow.keras.callbacks import Callback, EarlyStopping, ReduceLROnPlateau, TensorBoard  # type: ignore
+from tensorflow.keras.layers import BatchNormalization, Bidirectional, Conv1D, Dense, Dropout, GRU, Input, LSTM  # type: ignore
+from tensorflow.keras.models import Sequential  # type: ignore
+from tensorflow.keras.optimizers import Adam  # type: ignore
 import xgboost as xgb
 
 # Suppress verbose TensorFlow logging
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-import tensorflow as tf
 
 # --- TERMINAL STYLING (ENHANCED) ---
 class TerminalColors:
@@ -942,15 +941,6 @@ class StopIfNaN(Callback):
             self.model.stop_training = True
             logger.warning("NaN loss detected. Stopping training.")
 
-
-
-import tensorflow as tf
-from pathlib import Path
-import numpy as np
-import pandas as pd
-from typing import Dict, Optional
-import matplotlib.pyplot as plt
-import io
 
 class TradingTensorBoard:
     """
