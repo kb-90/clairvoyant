@@ -93,7 +93,7 @@ The Clairvoyant architecture is built on three core data pillars that feed into 
 
 <p align="center">
   <img width="49%" src="/assets/future_forecast_readme_2.png" alt="Clairvoyant XRP Price Forecaster - Predicted Plot">
-  <img width="49%" src="/assets/sentiment_trend_XRP_readme.png" alt="Clairvoyant XRP Price Forecaster - XRP Sentiment Trend Analyasis Chart">
+  <img width="49%" src="/assets/sentiment_trend_XRP_readme.png" alt="Clairvoyant XRP Price Forecaster - XRP Sentiment Trend Analysis Chart">
 </p>
  
 ## Getting Started
