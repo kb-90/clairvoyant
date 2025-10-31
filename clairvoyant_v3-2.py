@@ -176,7 +176,7 @@ class TerminalStyle:
 load_dotenv()
 MODEL_DIR = Path("models")
 
-# CONFIDENCE INTERVAL CONFIGURATION
+# CONFIDENCE INTERVAL CONFIGURATION~
 CI_METHOD = 'adaptive'
 
 # --- TRAINING CONFIGURATION ---
